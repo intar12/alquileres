@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grilla de Alquileres</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import { getFirestore, doc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+  import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+  // ─────────────────────────────────────────────────
+  // 🔧 REEMPLAZÁ ESTOS VALORES CON LOS DE TU PROYECTO
+  //    Firebase Console → Configuración del proyecto
+  // ─────────────────────────────────────────────────
+  const firebaseConfig = {
+    apiKey:            "TU_API_KEY",
+    authDomain:        "TU_PROJECT.firebaseapp.com",
+    projectId:         "TU_PROJECT_ID",
+    storageBucket:     "TU_PROJECT.appspot.com",
+    messagingSenderId: "TU_SENDER_ID",
+    appId:             "TU_APP_ID"
+  };
+
+  const USING_FIREBASE = firebaseConfig.apiKey !== "TU_API_KEY";
+
+  if (USING_FIREBASE) {
+    const app  = initializeApp(firebaseConfig);
+    const db   = getFirestore(app);
+    const auth = getAuth(app);
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        await signInAnonymously(auth);
+        return;
+      }
+      // ── Shared document: todos usan el mismo doc "shared/alquileres"
+      // Si querés datos por usuario, cambiá a: doc(db,'users',user.uid,'data','alquileres')
+      const ref = doc(db, 'alquileres', 'shared');
+
+      // Escuchar cambios en tiempo real
+      onSnapshot(ref, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.properties) {
+            window._fbProperties = data.properties;
+            if (!window._localChange) {
+              window.properties = data.properties;
+              window.render && window.render();
+              window.updateSyncStatus && window.updateSyncStatus('synced');
+            }
+            window._localChange = false;
+          }
+        }
+      });
+
+      // Exponer función save que escribe en Firestore
+      window._fbSave = async (props) => {
+        window._localChange = true;
+        window.updateSyncStatus && window.updateSyncStatus('saving');
+        try {
+          await setDoc(ref, { properties: props, updatedAt: new Date().toISOString() });
+          window.updateSyncStatus && window.updateSyncStatus('synced');
+        } catch(e) {
+          console.error('Firebase save error:', e);
+          window.updateSyncStatus && window.updateSyncStatus('error');
+          // Fallback a localStorage
+          localStorage.setItem('alq_v5', JSON.stringify({properties: props}));
+        }
+      };
+
+      window.updateSyncStatus && window.updateSyncStatus('connected');
+    });
+
+    window._firebaseReady = true;
+  } else {
+    window._firebaseReady = false;
+    window.updateSyncStatus && window.updateSyncStatus('local');
+  }
+</script>
+
+<style>
+  :root {
+    --bg:#faf5f9; --surface:#ffffff; --surface2:#f5eef8; --surface3:#ede4f4;
+    --border:#e8d8f0; --border2:#d4bce8;
+    --text:#3d2952; --text2:#8b6da0; --text3:#b49ec4;
+    --accent:#b06abf; --accent2:#8e48a0;
+    --green:#3db88c; --orange:#e07a5f; --red:#e05080;
+    --inc-bg:rgba(224,122,95,0.10); --inc-border:rgba(224,122,95,0.28);
+    --start-bg:rgba(61,184,140,0.09); --start-border:rgba(61,184,140,0.28);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+  /* HEADER */
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:58px;
+    display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;gap:12px;}
+  .logo{font-family:'DM Serif Display',serif;font-size:19px;display:flex;align-items:center;gap:8px;white-space:nowrap;}
+  .logo em{color:var(--accent);font-style:italic;}
+
+  .tabs{display:flex;gap:3px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:3px;}
+  .tab-btn{background:none;border:none;color:var(--text3);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;
+    padding:5px 16px;border-radius:7px;cursor:pointer;transition:all .18s;white-space:nowrap;}
+  .tab-btn.active{background:var(--accent);color:#fff;}
+  .tab-btn:not(.active):hover{color:var(--text);background:var(--surface3);}
+
+  .year-nav{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:40px;padding:4px 12px;}
+  .year-nav button{background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px;
+    width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+  .year-nav button:hover{background:var(--surface3);color:var(--text);}
+  .year-display{font-family:'DM Mono',monospace;font-size:14px;font-weight:500;min-width:36px;text-align:center;}
+  .year-today-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;
+    font-size:11px;color:var(--text3);cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif;}
+  .year-today-btn:hover{color:var(--accent);border-color:var(--accent);}
+
+  .header-right{display:flex;gap:8px;align-items:center;}
+  .btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:8px;
+    font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all .18s;border:none;white-space:nowrap;}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:hover{background:var(--accent2);transform:translateY(-1px);}
+  .btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border);}
+  .btn-ghost:hover{background:var(--surface2);color:var(--text);}
+
+  /* SYNC INDICATOR */
+  .sync-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px;transition:background .3s;}
+  .sync-dot.synced{background:#3db88c;}
+  .sync-dot.saving{background:#e07a5f;animation:pulse .8s infinite;}
+  .sync-dot.local{background:#b49ec4;}
+  .sync-dot.error{background:#e05080;}
+  .sync-dot.connected{background:#b06abf;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  .sync-label{font-size:11px;color:var(--text3);display:flex;align-items:center;white-space:nowrap;}
+
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+
+  /* ── GRILLA COMPACTA ── */
+  #panel-grilla{padding:16px 20px;}
+
+  .grid-legend{display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap;}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);}
+  .legend-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0;}
+
+  /* Tabla que ocupa todo el ancho sin scroll */
+  .table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+  table{width:100%;border-collapse:collapse;table-layout:fixed;}
+
+  /* Header meses */
+  thead tr th{
+    background:var(--surface2);border-bottom:1px solid var(--border);
+    padding:7px 2px;
+    font-family:'DM Mono',monospace;font-size:10px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.04em;
+    color:var(--text3);text-align:center;
+    overflow:hidden;
+  }
+  thead tr th.th-prop{
+    text-align:left;padding-left:14px;
+    width:160px;min-width:140px;
+  }
+  th.th-cur{color:var(--accent)!important;background:rgba(176,106,191,.06)!important;}
+
+  tbody tr{border-bottom:1px solid var(--border);}
+  tbody tr:last-child{border-bottom:none;}
+  tbody tr:hover{background:rgba(176,106,191,.025);}
+
+  /* Columna propiedad */
+  .td-prop{padding:10px 8px 10px 14px;vertical-align:middle;}
+  .prop-name{font-weight:600;font-size:13px;color:var(--text);margin-bottom:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .prop-meta{font-family:'DM Mono',monospace;font-size:9px;color:var(--text3);line-height:1.5;}
+  .prop-tenant{font-size:11px;color:var(--text2);margin-top:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .prop-actions{display:flex;gap:4px;margin-top:5px;}
+  .pa-btn{background:none;border:1px solid var(--border);color:var(--text3);font-size:9px;
+    padding:1px 6px;border-radius:4px;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif;}
+  .pa-btn:hover{color:var(--text);border-color:var(--border2);}
+  .pa-btn.del:hover{color:var(--red);border-color:var(--red);}
+
+  /* Celda mes */
+  td.td-month{padding:2px 1px;text-align:center;vertical-align:middle;}
+
+  .cell{
+    border-radius:6px;padding:4px 2px;min-height:52px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+    margin:1px;position:relative;
+  }
+  .cell.out{opacity:.18;}
+  .cell.c-start{background:var(--start-bg);border:1px solid var(--start-border);}
+  .cell.c-increase{background:var(--inc-bg);border:1px solid var(--inc-border);}
+  .cell.c-today{box-shadow:0 0 0 1.5px var(--accent);}
+
+  /* Badges compactos */
+  .cell-badge{
+    font-size:8px;font-weight:700;padding:1px 3px;border-radius:2px;
+    text-transform:uppercase;letter-spacing:.02em;white-space:nowrap;
+    margin-bottom:1px;
+  }
+  .badge-start{background:rgba(61,184,140,.15);color:var(--green);}
+  .badge-inc{background:rgba(224,122,95,.15);color:var(--orange);}
+
+  /* Input monto — compacto */
+  .inp-amount{
+    width:100%;max-width:72px;
+    background:transparent;border:none;
+    border-bottom:1px dashed transparent;
+    color:var(--text);
+    font-family:'DM Mono',monospace;font-size:11px;font-weight:500;
+    text-align:center;outline:none;
+    transition:border-color .15s, background .15s;
+    border-radius:3px;padding:1px 2px;
+  }
+  .inp-amount:hover{border-bottom-color:var(--border2);}
+  .inp-amount:focus{
+    background:var(--surface2);border:1px solid var(--accent);
+    border-radius:3px;color:var(--text);font-size:12px;
+  }
+  .cell.c-start .inp-amount{color:var(--green);}
+  .cell.c-increase .inp-amount{color:var(--orange);}
+
+  /* Input pct — compacto */
+  .pct-row{display:flex;align-items:center;justify-content:center;gap:2px;margin-top:1px;}
+  .inp-pct{
+    width:32px;
+    background:rgba(224,122,95,.10);border:1px solid rgba(224,122,95,.25);
+    border-radius:3px;color:var(--orange);
+    font-family:'DM Mono',monospace;font-size:10px;
+    padding:1px 2px;text-align:center;outline:none;
+    transition:border-color .15s, background .15s;
+  }
+  .inp-pct:hover{background:rgba(224,122,95,.16);}
+  .inp-pct:focus{background:rgba(224,122,95,.20);border-color:var(--orange);}
+  .pct-label{font-size:9px;color:var(--orange);font-family:'DM Mono',monospace;}
+
+  /* EMPTY */
+  .empty-state{text-align:center;padding:64px 40px;}
+  .empty-icon{font-size:40px;margin-bottom:12px;opacity:.35;}
+  .empty-title{font-family:'DM Serif Display',serif;font-size:18px;color:var(--text2);margin-bottom:6px;}
+  .empty-sub{font-size:13px;color:var(--text3);margin-bottom:20px;}
+
+  /* RESUMEN */
+  #panel-resumen{padding:20px 24px;}
+  .resumen-title{font-family:'DM Serif Display',serif;font-size:20px;color:var(--text);margin-bottom:18px;display:flex;align-items:center;gap:10px;}
+  .year-tag{font-family:'DM Mono',monospace;font-size:12px;color:var(--accent);background:rgba(176,106,191,.1);border:1px solid rgba(176,106,191,.25);border-radius:6px;padding:2px 9px;}
+  .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px;margin-bottom:22px;}
+  .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .sc-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:7px;}
+  .sc-val{font-family:'DM Mono',monospace;font-size:20px;font-weight:500;color:var(--text);}
+  .sc-val.green{color:var(--green);}.sc-val.orange{color:var(--orange);}.sc-val.accent{color:var(--accent);}
+  .sc-sub{font-size:11px;color:var(--text3);margin-top:3px;}
+  .bk-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:20px;}
+  .bk-head{padding:13px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-family:'DM Serif Display',serif;font-size:15px;color:var(--text);}
+  .bk-sub{font-size:12px;color:var(--text3);font-family:'DM Sans',sans-serif;margin-top:2px;}
+  .bk-table{width:100%;border-collapse:collapse;}
+  .bk-table th{background:var(--surface2);padding:8px 14px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);text-align:left;border-bottom:1px solid var(--border);}
+  .bk-table th:not(:first-child){text-align:right;}
+  .bk-table td{padding:9px 14px;font-size:13px;color:var(--text);border-bottom:1px solid var(--border);vertical-align:middle;}
+  .bk-table tr:last-child td{border-bottom:none;}
+  .bk-table td:not(:first-child){font-family:'DM Mono',monospace;text-align:right;}
+  .bk-table tr.cur-row td{background:rgba(176,106,191,.04);}
+  .bk-table tr.cur-row td:first-child{border-left:2px solid var(--accent);padding-left:12px;}
+  .inc-tag{font-size:10px;background:var(--inc-bg);color:var(--orange);border-radius:4px;padding:1px 4px;margin-left:5px;border:1px solid var(--inc-border);}
+  .pb-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px;}
+  .pb-head{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+  .pb-name{font-weight:600;font-size:13px;color:var(--text);}
+  .pb-meta{font-size:11px;color:var(--text3);margin-top:2px;font-family:'DM Mono',monospace;}
+  .pb-total{font-family:'DM Mono',monospace;font-size:13px;color:var(--green);}
+  .pb-row{display:flex;justify-content:space-between;align-items:center;padding:8px 16px;border-bottom:1px solid var(--border);font-size:13px;}
+  .pb-row:last-child{border-bottom:none;}
+  .pb-row.inc-row{background:var(--inc-bg);}
+  .pb-row.cur-month-row{background:rgba(176,106,191,.04);border-left:2px solid var(--accent);}
+  .pb-m{color:var(--text2);}
+  .pb-a{font-family:'DM Mono',monospace;color:var(--text);}
+  .pb-row.inc-row .pb-a{color:var(--orange);}
+  .pb-pct{font-size:11px;color:var(--orange);margin-left:7px;font-family:'DM Mono',monospace;}
+
+  /* MODAL */
+  .overlay{position:fixed;inset:0;background:rgba(61,20,80,.45);backdrop-filter:blur(6px);z-index:200;
+    display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .2s;}
+  .overlay.open{opacity:1;pointer-events:all;}
+  .modal{background:var(--surface);border:1px solid var(--border2);border-radius:18px;width:100%;max-width:500px;
+    padding:28px;transform:translateY(12px);transition:transform .2s;max-height:90vh;overflow-y:auto;}
+  .overlay.open .modal{transform:translateY(0);}
+  .modal-title{font-family:'DM Serif Display',serif;font-size:19px;color:var(--text);margin-bottom:3px;}
+  .modal-sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+  .fg{display:flex;flex-direction:column;gap:5px;}
+  .form-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .full{grid-column:1/-1;}
+  .fl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);}
+  .fi{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);
+    font-family:'DM Sans',sans-serif;font-size:14px;padding:8px 10px;outline:none;transition:border-color .15s;width:100%;}
+  .fi:focus{border-color:var(--accent);}
+  .fi::placeholder{color:var(--text3);}
+  select.fi{cursor:pointer;appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23b49ec4'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 10px center;padding-right:26px;}
+  .fhint{font-size:11px;color:var(--text3);}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);}
+
+  /* FIREBASE SETUP BANNER */
+  .fb-banner{background:rgba(176,106,191,.08);border:1px solid rgba(176,106,191,.25);border-radius:10px;
+    padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--text2);display:flex;align-items:flex-start;gap:10px;}
+  .fb-banner strong{color:var(--accent);}
+  .fb-banner code{background:var(--surface3);border-radius:3px;padding:1px 5px;font-size:11px;font-family:'DM Mono',monospace;color:var(--text);}
+  .fb-banner-close{margin-left:auto;background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0 4px;}
+
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--surface);border:1px solid var(--border2);
+    border-radius:10px;padding:10px 16px;font-size:13px;color:var(--text);z-index:300;box-shadow:0 4px 20px rgba(61,20,80,.12);
+    transform:translateY(70px);opacity:0;transition:all .28s;pointer-events:none;}
+  .toast.show{transform:translateY(0);opacity:1;}
+
+  ::-webkit-scrollbar{width:5px;height:5px;}
+  ::-webkit-scrollbar-track{background:var(--surface2);}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+  @media(max-width:900px){
+    thead tr th.th-prop{width:120px;min-width:110px;}
+  }
+  @media(max-width:700px){
+    header{padding:0 10px;gap:6px;}
+    .logo{font-size:15px;}
+    #panel-grilla,#panel-resumen{padding:10px;}
+    .form-grid2{grid-template-columns:1fr;}
+    .full{grid-column:1;}
+    .grid-legend{display:none;}
+    .sync-label span{display:none;}
+    thead tr th.th-prop{width:100px;min-width:90px;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🏠 <em>Alquileres</em></div>
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-grilla" onclick="switchTab('grilla')">📅 Grilla</button>
+    <button class="tab-btn" id="tab-resumen" onclick="switchTab('resumen')">📊 Resumen</button>
+  </div>
+  <div class="header-right">
+    <div class="year-nav">
+      <button onclick="changeYear(-1)">←</button>
+      <div class="year-display" id="yearDisplay">2026</div>
+      <button onclick="changeYear(1)">→</button>
+      <button class="year-today-btn" onclick="goToday()">Hoy</button>
+    </div>
+    <div class="sync-label" id="syncLabel">
+      <span class="sync-dot local" id="syncDot"></span>
+      <span id="syncText">local</span>
+    </div>
+    <button class="btn btn-primary" onclick="openModal()">＋ Propiedad</button>
+  </div>
+</header>
+
+<div id="panel-grilla" class="tab-panel active">
+  <div class="grid-legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green);opacity:.6"></div>Inicio</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--orange);opacity:.7"></div>Aumento</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent);opacity:.5;border-radius:50%"></div>Mes actual</div>
+    <div class="legend-item" style="margin-left:auto;font-size:11px;color:var(--text3);font-style:italic;">
+      ✏️ Editá monto o % → se propaga al resto del contrato
+    </div>
+  </div>
+  <div id="fbBanner" class="fb-banner" style="display:none">
+    <span>🔥</span>
+    <span><strong>Para activar Firebase:</strong> abrí el archivo HTML, buscá <code>firebaseConfig</code> y reemplazá los valores con los de tu proyecto en <strong>Firebase Console → Configuración</strong>. Mientras tanto los datos se guardan en localStorage.</span>
+    <button class="fb-banner-close" onclick="document.getElementById('fbBanner').style.display='none'">×</button>
+  </div>
+  <div class="table-wrap">
+    <table id="mainTable">
+      <thead id="tableHead"></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div id="emptyState" class="empty-state" style="display:none">
+      <div class="empty-icon">🏢</div>
+      <div class="empty-title">Ninguna propiedad cargada</div>
+      <div class="empty-sub">Agregá tu primera propiedad para ver la grilla</div>
+      <button class="btn btn-primary" onclick="openModal()">＋ Agregar Propiedad</button>
+    </div>
+  </div>
+</div>
+
+<div id="panel-resumen" class="tab-panel">
+  <div id="resumenContent"></div>
+</div>
+
+<!-- MODAL -->
+<div class="overlay" id="overlay" onclick="handleOverlay(event)">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Nueva Propiedad</div>
+    <div class="modal-sub" id="modalSub">Completá los datos</div>
+    <div class="form-grid2">
+      <div class="fg full">
+        <label class="fl">Nombre / Dirección</label>
+        <input type="text" class="fi" id="fName" placeholder="Ej: Depto Palermo 2A">
+      </div>
+      <div class="fg">
+        <label class="fl">Alquiler inicial ($)</label>
+        <input type="number" class="fi" id="fAmount" placeholder="0" min="0">
+        <span class="fhint">Monto al inicio del contrato</span>
+      </div>
+      <div class="fg">
+        <label class="fl">Duración del contrato</label>
+        <select class="fi" id="fDuration">
+          <option value="12">12 meses (1 año)</option>
+          <option value="24" selected>24 meses (2 años)</option>
+          <option value="36">36 meses (3 años)</option>
+          <option value="48">48 meses (4 años)</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">Mes de inicio</label>
+        <select class="fi" id="fStartMonth">
+          <option value="0">Enero</option><option value="1">Febrero</option>
+          <option value="2">Marzo</option><option value="3">Abril</option>
+          <option value="4">Mayo</option><option value="5">Junio</option>
+          <option value="6">Julio</option><option value="7">Agosto</option>
+          <option value="8">Septiembre</option><option value="9">Octubre</option>
+          <option value="10">Noviembre</option><option value="11">Diciembre</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">Año de inicio</label>
+        <input type="number" class="fi" id="fStartYear" value="2025" min="2020" max="2040">
+      </div>
+      <div class="fg">
+        <label class="fl">Frecuencia de aumento</label>
+        <select class="fi" id="fFreq">
+          <option value="3">Cada 3 meses</option>
+          <option value="4">Cada 4 meses</option>
+          <option value="6" selected>Cada 6 meses</option>
+          <option value="12">Cada 12 meses</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">% de aumento por defecto</label>
+        <input type="number" class="fi" id="fPct" value="0" min="0" max="999" step="0.1">
+        <span class="fhint">Editable mes a mes en la grilla</span>
+      </div>
+      <div class="fg full">
+        <label class="fl">Inquilino / Notas</label>
+        <input type="text" class="fi" id="fNotes" placeholder="Nombre del inquilino u observaciones">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="saveBtn" onclick="saveProperty()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toastEl"></div>
+
+<script>
+const MONTHS   = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const MONTHS_F = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+let currentYear = new Date().getFullYear();
+let activeTab   = 'grilla';
+let properties  = [];
+let editingId   = null;
+let _localChange = false;
+window._localChange = false;
+
+// ── SYNC STATUS ──
+function updateSyncStatus(status) {
+  const dot  = document.getElementById('syncDot');
+  const text = document.getElementById('syncText');
+  dot.className = 'sync-dot ' + status;
+  const labels = {synced:'guardado ☁️', saving:'guardando…', local:'local', error:'error', connected:'conectado'};
+  text.textContent = labels[status] || status;
+}
+window.updateSyncStatus = updateSyncStatus;
+
+// ── STORAGE ──
+function save() {
+  // Always save locally as backup
+  localStorage.setItem('alq_v5', JSON.stringify({properties}));
+  // Save to Firebase if available
+  if (window._fbSave) {
+    window._fbSave(properties);
+  } else {
+    updateSyncStatus('local');
+    // Show banner if Firebase not configured
+    const banner = document.getElementById('fbBanner');
+    if (banner && localStorage.getItem('alq_fb_banner_dismissed') !== '1') {
+      banner.style.display = 'flex';
+    }
+  }
+}
+
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem('alq_v5')||'{}');
+    properties = d.properties||[];
+  } catch(e) { properties = []; }
+  currentYear = new Date().getFullYear();
+  document.getElementById('yearDisplay').textContent = currentYear;
+  updateSyncStatus('local');
+}
+
+// Expose properties to Firebase listener
+Object.defineProperty(window, 'properties', {
+  get(){ return properties; },
+  set(v){ properties = v; }
+});
+
+// ── YEAR ──
+function changeYear(d) { currentYear += d; document.getElementById('yearDisplay').textContent = currentYear; render(); }
+function goToday() { currentYear = new Date().getFullYear(); document.getElementById('yearDisplay').textContent = currentYear; render(); }
+
+// ── TABS ──
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+tab).classList.add('active');
+  document.getElementById('tab-'+tab).classList.add('active');
+  render();
+}
+
+// ── MODAL ──
+function openModal(id) {
+  editingId = id||null;
+  const now = new Date();
+  if (id) {
+    const p = properties.find(x=>x.id===id);
+    document.getElementById('modalTitle').textContent = 'Editar Propiedad';
+    document.getElementById('modalSub').textContent   = p.name;
+    document.getElementById('fName').value       = p.name;
+    document.getElementById('fAmount').value     = p.baseAmount;
+    document.getElementById('fDuration').value   = p.durationMonths;
+    document.getElementById('fStartMonth').value = p.startMonth;
+    document.getElementById('fStartYear').value  = p.startYear;
+    document.getElementById('fFreq').value       = p.increaseFreq;
+    document.getElementById('fPct').value        = p.defaultPct;
+    document.getElementById('fNotes').value      = p.notes||'';
+    document.getElementById('saveBtn').textContent = 'Actualizar';
+  } else {
+    document.getElementById('modalTitle').textContent = 'Nueva Propiedad';
+    document.getElementById('modalSub').textContent   = 'Completá los datos del alquiler';
+    document.getElementById('fName').value       = '';
+    document.getElementById('fAmount').value     = '';
+    document.getElementById('fDuration').value   = '24';
+    document.getElementById('fStartMonth').value = now.getMonth();
+    document.getElementById('fStartYear').value  = now.getFullYear();
+    document.getElementById('fFreq').value       = '6';
+    document.getElementById('fPct').value        = '0';
+    document.getElementById('fNotes').value      = '';
+    document.getElementById('saveBtn').textContent = 'Guardar';
+  }
+  document.getElementById('overlay').classList.add('open');
+}
+function closeModal() { document.getElementById('overlay').classList.remove('open'); editingId=null; }
+function handleOverlay(e) { if(e.target===document.getElementById('overlay')) closeModal(); }
+
+function saveProperty() {
+  const name = document.getElementById('fName').value.trim();
+  const amt  = parseFloat(document.getElementById('fAmount').value);
+  const dur  = parseInt(document.getElementById('fDuration').value);
+  const sm   = parseInt(document.getElementById('fStartMonth').value);
+  const sy   = parseInt(document.getElementById('fStartYear').value);
+  const freq = parseInt(document.getElementById('fFreq').value);
+  const pct  = parseFloat(document.getElementById('fPct').value)||0;
+  const notes= document.getElementById('fNotes').value.trim();
+  if (!name)        { toast('⚠️ Ingresá un nombre'); return; }
+  if (!amt||amt<=0) { toast('⚠️ Ingresá un monto válido'); return; }
+  if (editingId) {
+    const p = properties.find(x=>x.id===editingId);
+    Object.assign(p,{name,baseAmount:amt,durationMonths:dur,startMonth:sm,startYear:sy,increaseFreq:freq,defaultPct:pct,notes});
+    toast('✓ Propiedad actualizada');
+  } else {
+    properties.push({id:Date.now().toString(),name,baseAmount:amt,durationMonths:dur,
+      startMonth:sm,startYear:sy,increaseFreq:freq,defaultPct:pct,notes,customPcts:{},customAmounts:{}});
+    toast('✓ Propiedad agregada');
+  }
+  save(); closeModal(); render();
+}
+
+function deleteProp(id) {
+  if(!confirm('¿Eliminar esta propiedad?')) return;
+  properties = properties.filter(x=>x.id!==id);
+  save(); render(); toast('🗑 Propiedad eliminada');
+}
+
+// ── KEYS ──
+function amountKey(propId, absMonth) { return propId+'|amt|'+absMonth; }
+function pctKey(propId, absMonth)    { return propId+'|pct|'+absMonth; }
+
+// ── COMPUTE ──
+function monthData(prop, year, m) {
+  const {startMonth:sm, startYear:sy, durationMonths:dur, increaseFreq:freq, defaultPct} = prop;
+  const offset = (year - sy)*12 + (m - sm);
+  if (offset < 0 || offset >= dur) return null;
+
+  const absMonth = sy*12 + sm + offset;
+  const absStart = sy*12 + sm;
+  const isStart    = offset === 0;
+  const isIncrease = offset > 0 && (offset % freq === 0);
+
+  const customAmounts = prop.customAmounts || {};
+  const customPcts    = prop.customPcts    || {};
+
+  if (customAmounts[amountKey(prop.id, absMonth)] !== undefined) {
+    return { amount: customAmounts[amountKey(prop.id, absMonth)], isStart, isIncrease, offset, absMonth, isManual: true };
+  }
+
+  // Find closest prior anchor
+  let anchorOffset = -1;
+  let anchorAmount = prop.baseAmount;
+  for (let o = offset - 1; o >= 0; o--) {
+    const aM = absStart + o;
+    if (customAmounts[amountKey(prop.id, aM)] !== undefined) {
+      anchorOffset = o;
+      anchorAmount = customAmounts[amountKey(prop.id, aM)];
+      break;
+    }
+  }
+
+  let amount = anchorAmount;
+  const firstIncOffset = anchorOffset < 0 ? freq : Math.ceil((anchorOffset + 1) / freq) * freq;
+  for (let o = firstIncOffset; o <= offset; o += freq) {
+    if (o === 0) continue;
+    const aM  = absStart + o;
+    const key = pctKey(prop.id, aM);
+    const p   = customPcts[key] !== undefined ? customPcts[key] : defaultPct;
+    amount *= (1 + p/100);
+  }
+  return { amount, isStart, isIncrease, offset, absMonth, isManual: false };
+}
+
+function getPct(prop, absMonth) {
+  const key = pctKey(prop.id, absMonth);
+  return (prop.customPcts && prop.customPcts[key] !== undefined) ? prop.customPcts[key] : prop.defaultPct;
+}
+
+// ── CELL HANDLERS ──
+function onAmountBlur(el, propId, absMonth) {
+  const raw = parseFloat(el.value);
+  if (isNaN(raw) || raw <= 0) { renderGrid(); return; }
+  const prop = properties.find(x=>x.id===propId);
+  if (!prop) return;
+  if (!prop.customAmounts) prop.customAmounts = {};
+
+  const {startMonth:sm, startYear:sy, durationMonths:dur} = prop;
+  const absStart = sy*12 + sm;
+  const editedOffset = absMonth - absStart;
+
+  prop.customAmounts[amountKey(propId, absMonth)] = raw;
+  for (let o = editedOffset + 1; o < dur; o++) {
+    delete prop.customAmounts[amountKey(propId, absStart + o)];
+  }
+  save(); renderGrid();
+  if (activeTab === 'resumen') renderResumen();
+}
+
+function onPctBlur(el, propId, absMonth) {
+  const raw = parseFloat(el.value);
+  if (isNaN(raw)) { el.value = getPct(properties.find(x=>x.id===propId), absMonth); return; }
+  const prop = properties.find(x=>x.id===propId);
+  if (!prop) return;
+  if (!prop.customPcts)    prop.customPcts    = {};
+  if (!prop.customAmounts) prop.customAmounts = {};
+
+  const {startMonth:sm, startYear:sy, durationMonths:dur, increaseFreq:freq} = prop;
+  const absStart     = sy*12 + sm;
+  const editedOffset = absMonth - absStart;
+
+  for (let o = editedOffset; o < dur; o += freq) {
+    if (o === 0) continue;
+    const aM = absStart + o;
+    if (aM >= absMonth) prop.customPcts[pctKey(propId, aM)] = raw;
+  }
+  for (let o = editedOffset; o < dur; o++) {
+    delete prop.customAmounts[amountKey(propId, absStart + o)];
+  }
+  save(); renderGrid();
+  if (activeTab === 'resumen') renderResumen();
+}
+
+function onInputKeydown(e) {
+  if (e.key === 'Enter') e.target.blur();
+  if (e.key === 'Escape') e.target.blur();
+}
+
+function fmt(n) { return '$'+Math.round(n).toLocaleString('es-AR'); }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── RENDER ──
+function render() {
+  window.render = render;
+  if (activeTab==='grilla')  renderGrid();
+  if (activeTab==='resumen') renderResumen();
+}
+window.render = render;
+
+function renderGrid() {
+  const head  = document.getElementById('tableHead');
+  const body  = document.getElementById('tableBody');
+  const empty = document.getElementById('emptyState');
+  const nowM  = new Date().getMonth();
+  const nowY  = new Date().getFullYear();
+
+  if (properties.length === 0) {
+    head.innerHTML=''; body.innerHTML=''; empty.style.display='block'; return;
+  }
+  empty.style.display = 'none';
+
+  head.innerHTML = `<tr>
+    <th class="th-prop">Propiedad</th>
+    ${MONTHS.map((m,i) => {
+      const cur = (i===nowM && currentYear===nowY);
+      return `<th class="${cur?'th-cur':''}" title="${MONTHS_F[i]}">${m}${cur?'·':''}</th>`;
+    }).join('')}
+  </tr>`;
+
+  body.innerHTML = properties.map(prop => {
+    const absStart = prop.startYear*12+prop.startMonth;
+    const endAbs   = absStart+prop.durationMonths-1;
+    const endY_    = Math.floor(endAbs/12);
+    const endM_    = endAbs%12;
+
+    const cells = Array.from({length:12},(_,m) => {
+      const md    = monthData(prop, currentYear, m);
+      const isCur = (m===nowM && currentYear===nowY);
+
+      if (!md) {
+        return `<td class="td-month"><div class="cell out">—</div></td>`;
+      }
+
+      let cls  = '';
+      let badge= '';
+      if (md.isStart)         { cls='c-start';    badge=`<span class="cell-badge badge-start">Ini</span>`; }
+      else if (md.isIncrease) { cls='c-increase'; badge=`<span class="cell-badge badge-inc">↑</span>`; }
+      if (isCur) cls += (cls?' ':'')+'c-today';
+
+      const amtInput = `<input
+        class="inp-amount"
+        type="number"
+        value="${Math.round(md.amount)}"
+        min="0"
+        title="${MONTHS_F[m]} ${currentYear}: $${Math.round(md.amount).toLocaleString('es-AR')}"
+        onblur="onAmountBlur(this,'${esc(prop.id)}',${md.absMonth})"
+        onkeydown="onInputKeydown(event)"
+        onclick="this.select()"
+      />`;
+
+      let pctInput = '';
+      if (md.isIncrease) {
+        const pv = getPct(prop, md.absMonth);
+        pctInput = `<div class="pct-row">
+          <input class="inp-pct" type="number" value="${pv}" min="0" max="999" step="0.1"
+            title="% aumento ${MONTHS_F[m]} — se aplica a todos los aumentos siguientes"
+            onblur="onPctBlur(this,'${esc(prop.id)}',${md.absMonth})"
+            onkeydown="onInputKeydown(event)" onclick="this.select()"
+          /><span class="pct-label">%</span>
+        </div>`;
+      }
+
+      return `<td class="td-month">
+        <div class="cell ${cls}">${badge}${amtInput}${pctInput}</div>
+      </td>`;
+    }).join('');
+
+    return `<tr>
+      <td class="td-prop">
+        <div class="prop-name" title="${esc(prop.name)}">${esc(prop.name)}</div>
+        <div class="prop-meta">${MONTHS[prop.startMonth]} ${prop.startYear}→${MONTHS[endM_]} ${endY_}</div>
+        ${prop.notes ? `<div class="prop-tenant">${esc(prop.notes)}</div>` : ''}
+        <div class="prop-actions">
+          <button class="pa-btn" onclick="openModal('${esc(prop.id)}')">✎</button>
+          <button class="pa-btn del" onclick="deleteProp('${esc(prop.id)}')">✕</button>
+        </div>
+      </td>
+      ${cells}
+    </tr>`;
+  }).join('');
+}
+
+// ── RENDER RESUMEN ──
+function renderResumen() {
+  const el   = document.getElementById('resumenContent');
+  const nowM = new Date().getMonth();
+  const nowY = new Date().getFullYear();
+
+  if (properties.length === 0) {
+    el.innerHTML=`<div class="empty-state">
+      <div class="empty-icon">📊</div>
+      <div class="empty-title">Sin datos aún</div>
+      <div class="empty-sub">Agregá propiedades para ver el resumen</div>
+      <button class="btn btn-primary" onclick="openModal()">＋ Agregar Propiedad</button>
+    </div>`; return;
+  }
+
+  let totalYear=0,totalHoy=0,activeNow=0,nextIncMonth=null;
+  const monthlyTotals=Array(12).fill(0),monthlyHasInc=Array(12).fill(false),monthlyCount=Array(12).fill(0);
+
+  properties.forEach(p => {
+    for (let m=0;m<12;m++) {
+      const md = monthData(p,currentYear,m);
+      if (md) {
+        monthlyTotals[m]+=md.amount; monthlyCount[m]++;
+        totalYear+=md.amount;
+        if (md.isIncrease) monthlyHasInc[m]=true;
+        if (md.isIncrease && nextIncMonth===null) nextIncMonth=m;
+      }
+    }
+    const mdH = monthData(p,nowY,nowM);
+    if (mdH) { totalHoy+=mdH.amount; activeNow++; }
+  });
+
+  const activeMonths = monthlyTotals.filter(v=>v>0).length||1;
+  const avgMonth     = totalYear/activeMonths;
+
+  const cards=`<div class="cards-grid">
+    <div class="stat-card"><div class="sc-label">Propiedades</div><div class="sc-val accent">${properties.length}</div><div class="sc-sub">${activeNow} activa${activeNow!==1?'s':''} hoy</div></div>
+    <div class="stat-card"><div class="sc-label">Ingreso mes actual</div><div class="sc-val">${fmt(totalHoy)}</div><div class="sc-sub">${MONTHS_F[nowM]} ${nowY}</div></div>
+    <div class="stat-card"><div class="sc-label">Ingreso anual ${currentYear}</div><div class="sc-val green">${fmt(totalYear)}</div><div class="sc-sub">Suma de todos los meses</div></div>
+    <div class="stat-card"><div class="sc-label">Promedio mensual</div><div class="sc-val">${fmt(avgMonth)}</div><div class="sc-sub">Meses activos en ${currentYear}</div></div>
+    ${nextIncMonth!==null?`<div class="stat-card"><div class="sc-label">Próximo aumento</div><div class="sc-val orange">${MONTHS_F[nextIncMonth]}</div><div class="sc-sub">${currentYear}</div></div>`:''}
+  </div>`;
+
+  const monthRows=MONTHS.map((mn,i)=>{
+    const isCur=(i===nowM&&currentYear===nowY);
+    const v=monthlyTotals[i]; const avg=monthlyCount[i]>0?v/monthlyCount[i]:0;
+    const incTag=monthlyHasInc[i]?`<span class="inc-tag">↑ aumento</span>`:'';
+    return `<tr class="${isCur?'cur-row':''}">
+      <td>${MONTHS_F[i]}${incTag}</td>
+      <td>${v>0?fmt(v):'—'}</td>
+      <td>${avg>0?fmt(avg):'—'}</td>
+      <td style="color:var(--text3);text-align:right">${monthlyCount[i]||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const monthlyTable=`<div class="bk-wrap">
+    <div class="bk-head"><div>Ingresos mensuales<div class="bk-sub">Año ${currentYear}</div></div><span class="year-tag">${currentYear}</span></div>
+    <table class="bk-table"><thead><tr><th>Mes</th><th style="text-align:right">Total</th><th style="text-align:right">Prom./prop.</th><th style="text-align:right">Props.</th></tr></thead><tbody>${monthRows}</tbody></table>
+  </div>`;
+
+  const propBreakdowns=properties.map(p=>{
+    const absStart=p.startYear*12+p.startMonth;
+    const endAbs=absStart+p.durationMonths-1;
+    const endY_=Math.floor(endAbs/12),endM_=endAbs%12;
+    let propYearTotal=0;
+    const rows=MONTHS.map((mn,m)=>{
+      const md=monthData(p,currentYear,m); if(!md) return '';
+      propYearTotal+=md.amount;
+      const isCur=(m===nowM&&currentYear===nowY);
+      const pctInfo=md.isIncrease?`<span class="pb-pct">+${getPct(p,md.absMonth)}%</span>`:'';
+      const icon=md.isStart?' 🟢':md.isIncrease?' 🟠':'';
+      return `<div class="pb-row ${md.isIncrease?'inc-row':''} ${isCur?'cur-month-row':''}">
+        <span class="pb-m">${MONTHS_F[m]}${icon}</span>
+        <span class="pb-a">${fmt(md.amount)}${pctInfo}</span>
+      </div>`;
+    }).join('');
+    if(!rows.replace(/\s/g,'')) return '';
+    return `<div class="pb-wrap">
+      <div class="pb-head">
+        <div><div class="pb-name">${esc(p.name)}</div><div class="pb-meta">${MONTHS[p.startMonth]} ${p.startYear} → ${MONTHS[endM_]} ${endY_} · ${p.durationMonths}m</div></div>
+        <div class="pb-total">${fmt(propYearTotal)}<span style="font-size:10px;color:var(--text3);margin-left:4px">/ año</span></div>
+      </div>${rows}
+    </div>`;
+  }).join('');
+
+  el.innerHTML=`
+    <div class="resumen-title">Resumen <span class="year-tag">${currentYear}</span></div>
+    ${cards}${monthlyTable}
+    <div style="margin-bottom:10px;font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.07em">Detalle por propiedad</div>
+    ${propBreakdowns||`<div class="empty-state" style="padding:40px"><div class="empty-sub">Ninguna propiedad activa en ${currentYear}</div></div>`}
+  `;
+}
+
+function toast(msg) {
+  const t=document.getElementById('toastEl');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2600);
+}
+
+load(); render();
+</script>
+</body>
+</html>
